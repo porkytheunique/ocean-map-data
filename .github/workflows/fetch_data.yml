@@ -35,10 +35,14 @@ jobs:
           url = "https://gateway.api.globalfishingwatch.org/v2/datasets"
           headers = { 'Authorization': f"Bearer {api_key}" }
           
-          print(f"Requesting URL: {url}")
+          # THIS IS THE NEW LINE THAT FIXES THE ERROR
+          params = { 'limit': 100, 'offset': 0 }
+          
+          print(f"Requesting URL: {url} with params: {params}")
 
           try:
-              response = requests.get(url, headers=headers)
+              # The new params dictionary is added to the request
+              response = requests.get(url, headers=headers, params=params)
               response.raise_for_status() 
               
               print("Request successful. Parsing dataset list...")
