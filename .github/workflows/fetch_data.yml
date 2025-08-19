@@ -1,0 +1,98 @@
+# Name of the automated workflow
+name: Fetch Ocean Data
+
+# Controls when the action runs
+on:
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+  # Runs on a schedule (this is set for 5:00 UTC every day)
+  schedule:
+    - cron: '0 5 * * *'
+
+# Defines the jobs that will run
+jobs:
+  # First job: Fetch data from Global Fishing Watch
+  fetch-gfw-data:
+    runs-on: ubuntu-latest
+    steps:
+      # Step 1: Check out your repository's code
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      # Step 2: Set up Python
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      # Step 3: Install the 'requests' library
+      - name: Install dependencies
+        run: pip install requests
+
+      # Step 4: Run the Python script to fetch GFW data
+      - name: Fetch GFW heatmap data
+        env:
+          GFW_API_KEY: ${{ secrets.GFW_API_KEY }}
+        run: |
+          import requests
+          import os
+          from datetime import datetime, timedelta
+
+          # Construct the date range for the last 3 days
+          end_time = datetime.utcnow()
+          start_time = end_time - timedelta(days=3)
+          date_range = f"{start_time.strftime('%Y-%m-%d')},{end_time.strftime('%Y-%m-%d')}"
+          
+          # The API endpoint for the fishing effort heatmap
+          url = f"https://gateway.api.globalfishingwatch.org/v2/4wings/tile/heatmap-all/all/{date_range}?TILE_RESOLUTION=2"
+          
+          headers = {
+              'Authorization': f"Bearer {os.getenv('GFW_API_KEY')}"
+          }
+          
+          response = requests.get(url, headers=headers)
+          response.raise_for_status() # Will raise an error if the request fails
+          
+          with open("fishing_effort.json", "w") as f:
+              f.write(response.text)
+          print("Successfully fetched GFW data and saved to fishing_effort.json")
+
+      # Step 5: Commit the new data file back to the repository
+      - name: Commit and push if it changed
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "Automated update of GFW fishing data"
+          file_pattern: "fishing_effort.json"
+
+  # Second job: Fetch data from the ArcGIS Marine Species layer
+  fetch-biodiversity-data:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Install dependencies
+        run: pip install requests
+      - name: Fetch Marine Mammal Richness data
+        run: |
+          import requests
+
+          # This URL queries a pre-calculated species richness layer from the Esri Living Atlas
+          # It asks for areas with a richness count of 1 or more, focusing on Marine Mammals
+          url = "https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/Global_Marine_Species_Richness_(Living_Atlas)/FeatureServer/4/query?where=richness+%3E%3D+1&outFields=richness&f=geojson"
+          
+          response = requests.get(url)
+          response.raise_for_status()
+          
+          with open("biodiversity_richness.geojson", "w") as f:
+              f.write(response.text)
+          print("Successfully fetched biodiversity data and saved to biodiversity_richness.geojson")
+          
+      - name: Commit and push if it changed
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "Automated update of marine biodiversity data"
+          file_pattern: "biodiversity_richness.geojson"
