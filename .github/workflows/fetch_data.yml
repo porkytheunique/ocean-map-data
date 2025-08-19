@@ -1,16 +1,20 @@
 # Name of the automated workflow
-name: DEBUG - Discover GFW Datasets
+name: Fetch Ocean Data
 
 # Controls when the action runs
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '0 5 * * *'
 
 # Defines the jobs that will run
 jobs:
-  # This job will connect to the GFW API and list available datasets
-  discover-gfw-datasets:
+  # First job: Fetch data from Global Fishing Watch
+  fetch-gfw-data:
     runs-on: ubuntu-latest
     steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -18,52 +22,84 @@ jobs:
       - name: Install dependencies
         run: pip install requests
 
-      - name: Create GFW Discovery script
+      - name: Create GFW Python script
         run: |
-          cat > discover_script.py <<EOF
+          cat > gfw_script.py <<EOF
           import requests
           import os
-          import json
+          from datetime import datetime, timedelta
 
-          print("--- Starting GFW Dataset Discovery ---")
-
+          print("--- Starting GFW Data Fetch ---")
           api_key = os.getenv('GFW_API_KEY')
-          if not api_key:
-              print("!!! ERROR: GFW_API_KEY not found in secrets.")
-              exit(1)
           
-          url = "https://gateway.api.globalfishingwatch.org/v2/datasets"
+          # Construct the date range in YYYY-MM-DD,YYYY-MM-DD format
+          end_time = datetime.utcnow()
+          start_time = end_time - timedelta(days=3)
+          date_range = f"{start_time.strftime('%Y-%m-%d')},{end_time.strftime('%Y-%m-%d')}"
+          print(f"Fetching data for date range: {date_range}")
+          
+          # This is the standard 4Wings endpoint for heatmap data
+          url = f"https://gateway.api.globalfishingwatch.org/v2/4wings/tile/heatmap-all/all/{date_range}"
           headers = { 'Authorization': f"Bearer {api_key}" }
+          params = { 'TILE_RESOLUTION': 2 } # A parameter for the data resolution
           
-          # THIS IS THE NEW LINE THAT FIXES THE ERROR
-          params = { 'limit': 100, 'offset': 0 }
-          
-          print(f"Requesting URL: {url} with params: {params}")
+          print(f"Requesting URL: {url}")
 
           try:
-              # The new params dictionary is added to the request
               response = requests.get(url, headers=headers, params=params)
               response.raise_for_status() 
               
-              print("Request successful. Parsing dataset list...")
-              datasets = response.json()
-              
-              print("\n\n--- Available Datasets ---")
-              print(json.dumps(datasets, indent=2))
-              print("--------------------------\n\n")
+              print("Request successful. Writing to file...")
+              with open("fishing_effort.json", "w") as f:
+                  f.write(response.text)
+              print("Successfully saved to fishing_effort.json")
 
           except requests.exceptions.HTTPError as e:
-              print("!!! ERROR: Request Failed !!!")
-              print(f"Status Code: {e.response.status_code}")
-              print("--- Server Response Body ---")
-              print(e.response.text)
-              print("--------------------------")
+              print(f"!!! ERROR: Request Failed. Status Code: {e.response.status_code}")
+              print(f"--- Server Response Body ---\n{e.response.text}\n--------------------------")
               raise e
 
-          print("--- GFW Dataset Discovery Complete ---")
+          print("--- GFW Data Fetch Complete ---")
           EOF
 
-      - name: Run GFW Discovery script
+      - name: Run GFW script
         env:
           GFW_API_KEY: ${{ secrets.GFW_API_KEY }}
-        run: python discover_script.py
+        run: python gfw_script.py
+        
+      - name: Commit and push if it changed
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "Automated update of GFW fishing data"
+          file_pattern: "fishing_effort.json"
+
+  # Second job: Fetch data from the ArcGIS Marine Species layer
+  fetch-biodiversity-data:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Install dependencies
+        run: pip install requests
+      - name: Create Biodiversity Python script
+        run: |
+          cat > biodiversity_script.py <<EOF
+          import requests
+          url = "https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/Global_Marine_Species_Richness_(Living_Atlas)/FeatureServer/4/query?where=richness+%3E%3D+1&outFields=richness&f=geojson"
+          response = requests.get(url)
+          response.raise_for_status()
+          with open("biodiversity_richness.geojson", "w") as f:
+              f.write(response.text)
+          print("Successfully fetched biodiversity data and saved to biodiversity_richness.geojson")
+          EOF
+      - name: Run Biodiversity script
+        run: python biodiversity_script.py
+      - name: Commit and push if it changed
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "Automated update of marine biodiversity data"
+          file_pattern: "biodiversity_richness.geojson"
