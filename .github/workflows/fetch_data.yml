@@ -1,20 +1,16 @@
 # Name of the automated workflow
-name: Fetch Ocean Data
+name: DEBUG - Discover GFW Datasets
 
 # Controls when the action runs
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '0 5 * * *'
 
 # Defines the jobs that will run
 jobs:
-  # First job: Fetch data from Global Fishing Watch
-  fetch-gfw-data:
+  # This job will connect to the GFW API and list available datasets
+  discover-gfw-datasets:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out repo
-        uses: actions/checkout@v4
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -22,47 +18,35 @@ jobs:
       - name: Install dependencies
         run: pip install requests
 
-      # Step 4: Create the Python script to fetch GFW data
-      - name: Create GFW Python script
+      - name: Create GFW Discovery script
         run: |
-          cat > gfw_script.py <<EOF
+          cat > discover_script.py <<EOF
           import requests
           import os
-          from datetime import datetime, timedelta
+          import json
 
-          print("--- Starting GFW Data Fetch ---")
+          print("--- Starting GFW Dataset Discovery ---")
 
-          # Get API Key
           api_key = os.getenv('GFW_API_KEY')
           if not api_key:
               print("!!! ERROR: GFW_API_KEY not found in secrets.")
               exit(1)
           
-          # Construct the date range for the last 3 full days
-          end_date = datetime.utcnow().date()
-          start_date = end_date - timedelta(days=3)
-          sql_filter = f"date >= '{start_date.strftime('%Y-%m-%d')}' AND date <= '{end_date.strftime('%Y-%m-%d')}'"
-          print(f"SQL Filter: {sql_filter}")
-          
-          # This is the correct, documented endpoint for querying the fishing effort dataset
-          url = "https://gateway.api.globalfishingwatch.org/v2/datasets/public-fishing-effort:latest/points"
-          
-          headers = { 'Authorization': f"Bearer {api_key}", 'Content-Type': 'application/json' }
-          params = {
-              'sql': sql_filter,
-              'format': 'json' # Use json, which is equivalent to geojson for points
-          }
+          url = "https://gateway.api.globalfishingwatch.org/v2/datasets"
+          headers = { 'Authorization': f"Bearer {api_key}" }
           
           print(f"Requesting URL: {url}")
 
           try:
-              response = requests.get(url, headers=headers, params=params)
+              response = requests.get(url, headers=headers)
               response.raise_for_status() 
               
-              print("Request successful. Writing to file...")
-              with open("fishing_effort.json", "w") as f:
-                  f.write(response.text)
-              print("Successfully saved to fishing_effort.json")
+              print("Request successful. Parsing dataset list...")
+              datasets = response.json()
+              
+              print("\n\n--- Available Datasets ---")
+              print(json.dumps(datasets, indent=2))
+              print("--------------------------\n\n")
 
           except requests.exceptions.HTTPError as e:
               print("!!! ERROR: Request Failed !!!")
@@ -72,49 +56,10 @@ jobs:
               print("--------------------------")
               raise e
 
-          print("--- GFW Data Fetch Complete ---")
+          print("--- GFW Dataset Discovery Complete ---")
           EOF
 
-      # Step 5: Run the Python script
-      - name: Run GFW script
+      - name: Run GFW Discovery script
         env:
           GFW_API_KEY: ${{ secrets.GFW_API_KEY }}
-        run: python gfw_script.py
-        
-      # Step 6: Commit the new data file
-      - name: Commit and push if it changed
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: "Automated update of GFW fishing data"
-          file_pattern: "fishing_effort.json"
-
-  # Second job: Fetch data from the ArcGIS Marine Species layer (unchanged)
-  fetch-biodiversity-data:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out repo
-        uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
-      - name: Install dependencies
-        run: pip install requests
-      - name: Create Biodiversity Python script
-        run: |
-          cat > biodiversity_script.py <<EOF
-          import requests
-          url = "https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/Global_Marine_Species_Richness_(Living_Atlas)/FeatureServer/4/query?where=richness+%3E%3D+1&outFields=richness&f=geojson"
-          response = requests.get(url)
-          response.raise_for_status()
-          with open("biodiversity_richness.geojson", "w") as f:
-              f.write(response.text)
-          print("Successfully fetched biodiversity data and saved to biodiversity_richness.geojson")
-          EOF
-      - name: Run Biodiversity script
-        run: python biodiversity_script.py
-      - name: Commit and push if it changed
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: "Automated update of marine biodiversity data"
-          file_pattern: "biodiversity_richness.geojson"
+        run: python discover_script.py
