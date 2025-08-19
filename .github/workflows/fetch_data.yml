@@ -9,7 +9,7 @@ on:
 
 # Defines the jobs that will run
 jobs:
-  # First job: Fetch data from Global Fishing Watch
+  # First job: Fetch data from Global Fishing Watch (Working)
   fetch-gfw-data:
     runs-on: ubuntu-latest
     steps:
@@ -21,73 +21,53 @@ jobs:
           python-version: '3.10'
       - name: Install dependencies
         run: pip install requests
-
       - name: Create GFW Python script
         run: |
           cat > gfw_script.py <<EOF
           import requests
           import os
           from datetime import datetime, timedelta
-
           print("--- Starting GFW Data Fetch using Events API v3 ---")
           api_key = os.getenv('GFW_API_KEY')
-          
-          # Construct the date range for the last 3 full days in YYYY-MM-DD format
           end_date = datetime.utcnow().date()
           start_date = end_date - timedelta(days=3)
           start_date_str = start_date.strftime('%Y-%m-%d')
           end_date_str = end_date.strftime('%Y-%m-%d')
-          
           print(f"Fetching data from {start_date_str} to {end_date_str}")
-          
-          # This is the correct, documented endpoint for querying events
           url = "https://gateway.api.globalfishingwatch.org/v3/events"
-          
           headers = { 'Authorization': f"Bearer {api_key}" }
-          
-          # These parameters are built exactly according to the documentation you provided
           params = {
               'datasets[0]': 'public-global-fishing-events:latest',
               'types[0]': 'FISHING',
               'start-date': start_date_str,
               'end-date': end_date_str,
-              'limit': 10000, # Request up to 10,000 events
+              'limit': 10000,
               'offset': 0
           }
-          
-          print(f"Requesting URL: {url}")
-          print(f"With Parameters: {params}")
-
           try:
               response = requests.get(url, headers=headers, params=params)
               response.raise_for_status() 
-              
               print("Request successful. Writing to file...")
-              # GFW Events API returns GeoJSON format when requested with these params
               with open("fishing_events.geojson", "w") as f:
                   f.write(response.text)
               print("Successfully saved to fishing_events.geojson")
-
           except requests.exceptions.HTTPError as e:
               print(f"!!! ERROR: Request Failed. Status Code: {e.response.status_code}")
               print(f"--- Server Response Body ---\n{e.response.text}\n--------------------------")
               raise e
-
           print("--- GFW Data Fetch Complete ---")
           EOF
-
       - name: Run GFW script
         env:
           GFW_API_KEY: ${{ secrets.GFW_API_KEY }}
         run: python gfw_script.py
-        
       - name: Commit and push if it changed
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "Automated update of GFW fishing events"
           file_pattern: "fishing_events.geojson"
 
-  # Second job: Fetch data from the ArcGIS Marine Species layer
+  # Second job: Fetch data from the ArcGIS Marine Species layer (Corrected with YOUR URL)
   fetch-biodiversity-data:
     runs-on: ubuntu-latest
     steps:
@@ -103,7 +83,9 @@ jobs:
         run: |
           cat > biodiversity_script.py <<EOF
           import requests
-          url = "https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/Global_Marine_Species_Richness_(Living_Atlas)/FeatureServer/4/query?where=richness+%3E%3D+1&outFields=richness&f=geojson"
+          # THIS IS THE CORRECTED URL YOU PROVIDED
+          url = "https://services9.arcgis.com/IkktFdUAcY3WrH25/arcgis/rest/services/Global_Marine_Species_Patterns_(55km)/FeatureServer/0/query?where=1%3D1&outFields=Rich_all&outSR=4326&f=geojson"
+          print(f"Requesting URL: {url}")
           response = requests.get(url)
           response.raise_for_status()
           with open("biodiversity_richness.geojson", "w") as f:
