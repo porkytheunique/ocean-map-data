@@ -38,21 +38,25 @@ jobs:
               print("!!! ERROR: GFW_API_KEY not found in secrets.")
               exit(1)
           
-          # Construct the date range in YYYY-MM-DD,YYYY-MM-DD format
-          end_time = datetime.utcnow()
-          start_time = end_time - timedelta(days=3)
-          date_range = f"{start_time.strftime('%Y-%m-%d')},{end_time.strftime('%Y-%m-%d')}"
-          print(f"Date Range: {date_range}")
+          # Construct the date range for the last 3 full days
+          end_date = datetime.utcnow().date()
+          start_date = end_date - timedelta(days=3)
+          sql_filter = f"date >= '{start_date.strftime('%Y-%m-%d')}' AND date <= '{end_date.strftime('%Y-%m-%d')}'"
+          print(f"SQL Filter: {sql_filter}")
           
-          # Trying a different endpoint designed for this type of data query
-          url = f"https://gateway.api.globalfishingwatch.org/v2/4wings/tile/heatmap-all/all/{date_range}?TILE_RESOLUTION=2"
+          # This is the correct, documented endpoint for querying the fishing effort dataset
+          url = "https://gateway.api.globalfishingwatch.org/v2/datasets/public-fishing-effort:latest/points"
           
-          headers = { 'Authorization': f"Bearer {api_key}" }
+          headers = { 'Authorization': f"Bearer {api_key}", 'Content-Type': 'application/json' }
+          params = {
+              'sql': sql_filter,
+              'format': 'json' # Use json, which is equivalent to geojson for points
+          }
           
           print(f"Requesting URL: {url}")
 
           try:
-              response = requests.get(url, headers=headers)
+              response = requests.get(url, headers=headers, params=params)
               response.raise_for_status() 
               
               print("Request successful. Writing to file...")
