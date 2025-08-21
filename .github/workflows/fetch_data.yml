@@ -41,20 +41,19 @@ jobs:
           
           print(f"Fetching data for date range: {date_range}")
           
-          # THIS IS THE CORRECT ENDPOINT BASED ON YOUR DOCUMENTATION RESEARCH
           url = "https://gateway.api.globalfishingwatch.org/v3/4wings/report"
           
           headers = { 'Authorization': f"Bearer {api_key}" }
           params = {
-              # THIS IS THE CORRECT DATASET ID FOR THIS ENDPOINT
               'datasets[0]': 'public-global-fishing-effort:latest',
-              'spatial-resolution': '1degree',
+              # CORRECTED LINE: Using 'LOW' as requested by the API error message
+              'spatial-resolution': 'LOW',
               'temporal-resolution': 'daily',
               'date-range': date_range,
               'format': 'csv'
           }
           
-          print(f"Requesting URL: {url}")
+          print(f"Requesting URL: {url} with params: {params}")
 
           try:
               response = requests.get(url, headers=headers, params=params)
@@ -67,7 +66,6 @@ jobs:
               reader = csv.DictReader(csv_file)
               for row in reader:
                   try:
-                      # The column names from the report endpoint are different
                       lat = float(row['cell_ll_lat'])
                       lon = float(row['cell_ll_lon'])
                       hours = float(row['fishing_hours'])
