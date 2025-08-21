@@ -46,11 +46,11 @@ jobs:
           headers = { 'Authorization': f"Bearer {api_key}" }
           params = {
               'datasets[0]': 'public-global-fishing-effort:latest',
-              # CORRECTED LINE: Using 'LOW' as requested by the API error message
               'spatial-resolution': 'LOW',
               'temporal-resolution': 'daily',
               'date-range': date_range,
-              'format': 'csv'
+              # CORRECTED LINE: Using 'CSV' in uppercase as requested by the API
+              'format': 'CSV'
           }
           
           print(f"Requesting URL: {url} with params: {params}")
