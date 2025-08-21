@@ -28,63 +28,55 @@ jobs:
           import requests
           import os
           import json
-          import csv
-          from io import StringIO
-          from datetime import datetime, timedelta
+          from datetime import datetime, date, timedelta
 
-          print("--- Starting GFW Data Fetch using V3 4Wings Report API ---")
+          print("--- Starting GFW Data Fetch using Events API v3 ---")
           api_key = os.getenv('GFW_API_KEY')
           
-          end_date = datetime.utcnow().date() - timedelta(days=3)
-          start_date = end_date - timedelta(days=3)
-          date_range = f"{start_date.strftime('%Y-%m-%d')},{end_date.strftime('%Y-%m-%d')}"
+          # THIS IS THE NEW DATE LOGIC TO TEST THE API
+          # We will query for the first 7 days of the previous month to ensure data is available.
+          today = date.today()
+          first_day_of_current_month = today.replace(day=1)
+          last_day_of_previous_month = first_day_of_current_month - timedelta(days=1)
+          first_day_of_previous_month = last_day_of_previous_month.replace(day=1)
           
-          print(f"Fetching data for date range: {date_range}")
+          start_date = first_day_of_previous_month
+          end_date = start_date + timedelta(days=7)
+
+          start_date_str = start_date.strftime('%Y-%m-%d')
+          end_date_str = end_date.strftime('%Y-%m-%d')
+          # --- END OF NEW DATE LOGIC ---
           
-          url = "https://gateway.api.globalfishingwatch.org/v3/4wings/report"
+          print(f"Fetching data from {start_date_str} to {end_date_str}")
+          
+          url = "https://gateway.api.globalfishingwatch.org/v3/events"
           
           headers = { 'Authorization': f"Bearer {api_key}" }
           params = {
-              'datasets[0]': 'public-global-fishing-effort:latest',
-              'spatial-resolution': 'LOW',
-              'temporal-resolution': 'daily',
-              'date-range': date_range,
-              # CORRECTED LINE: Using 'CSV' in uppercase as requested by the API
-              'format': 'CSV'
+              'datasets[0]': 'public-global-fishing-events:latest',
+              'types[0]': 'FISHING',
+              'start-date': start_date_str,
+              'end-date': end_date_str,
+              'limit': 10000,
+              'offset': 0
           }
           
-          print(f"Requesting URL: {url} with params: {params}")
+          print(f"Requesting URL: {url} with params {params}")
 
           try:
               response = requests.get(url, headers=headers, params=params)
               response.raise_for_status() 
               
-              print("Request successful. Converting CSV to GeoJSON...")
-              
-              features = []
-              csv_file = StringIO(response.text)
-              reader = csv.DictReader(csv_file)
-              for row in reader:
-                  try:
-                      lat = float(row['cell_ll_lat'])
-                      lon = float(row['cell_ll_lon'])
-                      hours = float(row['fishing_hours'])
-                      
-                      features.append({
-                          "type": "Feature",
-                          "geometry": { "type": "Point", "coordinates": [lon, lat] },
-                          "properties": { "fishing_hours": hours }
-                      })
-                  except (ValueError, KeyError) as e:
-                      print(f"Skipping row with error: {row} - {e}")
-                      continue
+              print("Request successful. Writing to file...")
+              with open("fishing_events.geojson", "w") as f:
+                  f.write(response.text)
 
-              geojson_output = { "type": "FeatureCollection", "features": features }
-
-              with open("fishing_effort.geojson", "w") as f:
-                  json.dump(geojson_output, f)
-
-              print(f"Successfully saved {len(features)} data points to fishing_effort.geojson")
+              # Check if any events were returned
+              data = response.json()
+              event_count = data.get('total', 0)
+              print(f"Successfully saved {event_count} events to fishing_events.geojson")
+              if event_count == 0:
+                  print("WARNING: The API returned 0 events for the requested period.")
 
           except requests.exceptions.HTTPError as e:
               print(f"!!! ERROR: Request Failed. Status Code: {e.response.status_code}")
@@ -102,8 +94,8 @@ jobs:
       - name: Commit and push if it changed
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "Automated update of GFW fishing effort"
-          file_pattern: "fishing_effort.geojson"
+          commit_message: "Automated update of GFW fishing events"
+          file_pattern: "fishing_events.geojson"
 
   # Second job: Fetch data from the ArcGIS Marine Species layer
   fetch-biodiversity-data:
