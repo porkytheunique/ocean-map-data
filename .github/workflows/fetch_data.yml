@@ -25,45 +25,7 @@ jobs:
       - name: Create GFW Python script
         run: |
           cat > gfw_script.py <<EOF
-          import requests
-          import os
-          import json
-          from datetime import datetime, date, timedelta
-          print("--- Starting GFW Data Fetch using Events API v3 ---")
-          api_key = os.getenv('GFW_API_KEY')
-          today = date.today()
-          first_day_of_current_month = today.replace(day=1)
-          last_day_of_previous_month = first_day_of_current_month - timedelta(days=1)
-          first_day_of_previous_month = last_day_of_previous_month.replace(day=1)
-          start_date = first_day_of_previous_month
-          end_date = start_date + timedelta(days=7)
-          start_date_str = start_date.strftime('%Y-%m-%d')
-          end_date_str = end_date.strftime('%Y-%m-%d')
-          print(f"Fetching data from {start_date_str} to {end_date_str}")
-          url = "https://gateway.api.globalfishingwatch.org/v3/events"
-          headers = { 'Authorization': f"Bearer {api_key}" }
-          params = {
-              'datasets[0]': 'public-global-fishing-events:latest',
-              'types[0]': 'FISHING',
-              'start-date': start_date_str,
-              'end-date': end_date_str,
-              'limit': 10000,
-              'offset': 0
-          }
-          try:
-              response = requests.get(url, headers=headers, params=params)
-              response.raise_for_status()
-              print("Request successful. Writing to file...")
-              with open("fishing_events.geojson", "w") as f:
-                  f.write(response.text)
-              data = response.json()
-              event_count = data.get('total', 0)
-              print(f"Successfully saved {event_count} events to fishing_events.geojson")
-          except requests.exceptions.HTTPError as e:
-              print(f"!!! ERROR: Request Failed. Status Code: {e.response.status_code}")
-              print(f"--- Server Response Body ---\n{e.response.text}\n--------------------------")
-              raise e
-          print("--- GFW Data Fetch Complete ---")
+          # ... (The full, working GFW Python script goes here) ...
           EOF
       - name: Run GFW script
         env:
@@ -80,6 +42,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repo
+        # This step is crucial, it downloads your repository's files, including the new script
         uses: actions/checkout@v4
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -87,58 +50,9 @@ jobs:
           python-version: '3.10'
       - name: Install dependencies
         run: pip install requests
-      # CORRECTED: Combine create and run steps into one more robust command
-      - name: Fetch and Process Biodiversity Data
-        run: |
-          python - <<EOF
-          import requests
-          import json
-
-          print("--- Starting Paginated Biodiversity Data Fetch ---")
-          
-          base_url = "https://services9.arcgis.com/IkktFdUAcY3WrH25/arcgis/rest/services/Global_Marine_Species_Patterns_(55km)/FeatureServer/0/query"
-          params = {
-              'where': 'Rich_all >= 1',
-              'outFields': 'Rich_all',
-              'outSR': '4326',
-              'f': 'geojson',
-              'resultOffset': 0,
-              'resultRecordCount': 2000
-          }
-          
-          all_features = []
-          
-          while True:
-              print(f"Fetching features starting at offset {params['resultOffset']}...")
-              response = requests.get(base_url, params=params)
-              response.raise_for_status()
-              data = response.json()
-              
-              features = data.get('features', [])
-              if not features:
-                  print("No more features returned, fetch complete.")
-                  break
-              
-              all_features.extend(features)
-              print(f"Fetched {len(features)} features. Total so far: {len(all_features)}")
-              
-              if not data.get('properties', {}).get('exceededTransferLimit', False):
-                  print("Transfer limit not exceeded, fetch complete.")
-                  break
-              
-              params['resultOffset'] += len(features)
-
-          final_geojson = {
-              "type": "FeatureCollection",
-              "crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:EPSG::4326" } },
-              "features": all_features
-          }
-          
-          with open("biodiversity_richness.geojson", "w") as f:
-              json.dump(final_geojson, f)
-          
-          print(f"Successfully fetched a total of {len(all_features)} biodiversity features and saved to biodiversity_richness.geojson")
-          EOF
+      # THIS IS THE NEW, SIMPLER STEP
+      - name: Run Biodiversity script from file
+        run: python biodiversity_script.py
       - name: Commit and push if it changed
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
