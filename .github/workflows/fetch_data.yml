@@ -7,32 +7,30 @@ on:
     - cron: '0 5 * * *'
 
 jobs:
-  # First job: Fetch data from Global Fishing Watch (RE-ENABLED)
-  fetch-gfw-data:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out repo
-        uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
-      - name: Install dependencies
-        run: pip install requests
-      - name: Create GFW Python script
-        run: |
-          cat > gfw_script.py <<EOF
-          # ... (The full, working GFW Python script from our successful run goes here) ...
-          EOF
-      - name: Run GFW script
-        env:
-          GFW_API_KEY: ${{ secrets.GFW_API_KEY }}
-        run: python gfw_script.py
-      - name: Commit and push if it changed
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: "Automated update of GFW fishing events"
-          file_pattern: "fishing_events.geojson"
+  # First job: Fetch data from Global Fishing Watch (DISABLED FOR DEBUGGING)
+  # fetch-gfw-data:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Check out repo
+  #       uses: actions/checkout@v4
+  #     - name: Set up Python
+  #       uses: actions/setup-python@v5
+  #       with:
+  #         python-version: '3.10'
+  #     - name: Install dependencies
+  #       run: pip install requests
+  #     - name: Create GFW Python script
+  #       run: |
+  #         # ... (The full, working GFW Python script goes here) ...
+  #     - name: Run GFW script
+  #       env:
+  #         GFW_API_KEY: ${{ secrets.GFW_API_KEY }}
+  #       run: python gfw_script.py
+  #     - name: Commit and push if it changed
+  #       uses: stefanzweifel/git-auto-commit-action@v5
+  #       with:
+  #         commit_message: "Automated update of GFW fishing events"
+  #         file_pattern: "fishing_effort.geojson"
 
   # Second job: Fetch data from the ArcGIS Marine Species layer
   fetch-biodiversity-data:
@@ -52,4 +50,5 @@ jobs:
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "Automated update of marine biodiversity data"
-          file_pattern: "biodiversity_richness.geojson"
+          # We are now committing the new, smaller file
+          file_pattern: "biodiversity_heatmap_data.json"
