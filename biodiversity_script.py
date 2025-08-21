@@ -1,58 +1,26 @@
 import requests
-import json
 import os
 
 # This tells Python to print messages to the log immediately.
 os.environ['PYTHONUNBUFFERED'] = "1"
 
-print("--- Starting Paginated Biodiversity Data Fetch (with timeouts) ---")
+print("--- Starting SIMPLEST API Fetch Test ---")
 
-base_url = "https://services9.arcgis.com/IkktFdUAcY3WrH25/arcgis/rest/services/Global_Marine_Species_Patterns_(55km)/FeatureServer/0/query"
-params = {
-    'where': 'Rich_all >= 1',
-    'outFields': 'Rich_all',
-    'outSR': '4326',
-    'f': 'geojson',
-    'resultOffset': 0,
-    'resultRecordCount': 2000 # Max records per request
-}
+# A very simple URL that asks for just ONE record from the dataset.
+test_url = "https://services9.arcgis.com/IkktFdUAcY3WrH25/arcgis/rest/services/Global_Marine_Species_Patterns_(55km)/FeatureServer/0/query?where=1%3D1&outFields=Rich_all&outSR=4326&f=geojson&resultRecordCount=1"
 
-all_features = []
+print(f"Requesting URL: {test_url}")
 
-while True:
-    print(f"Fetching features starting at offset {params['resultOffset']}...")
-    try:
-        # We've added a 120-second (2 minute) timeout to the request.
-        response = requests.get(base_url, params=params, timeout=120)
-        response.raise_for_status()
-        data = response.json()
-        
-        features = data.get('features', [])
-        if not features:
-            print("No more features returned, fetch complete.")
-            break
-        
-        all_features.extend(features)
-        print(f"Fetched {len(features)} features. Total so far: {len(all_features)}")
-        
-        if not data.get('properties', {}).get('exceededTransferLimit', False):
-            print("Transfer limit not exceeded, fetch complete.")
-            break
-        
-        params['resultOffset'] += len(features)
+try:
+    # We will try to connect with a 60-second timeout.
+    response = requests.get(test_url, timeout=60)
+    response.raise_for_status()
+    print("\n--- SUCCESS! ---")
+    print("Successfully connected to the API and received a response.")
+    print("\nResponse Text:")
+    print(response.text)
 
-    except requests.exceptions.RequestException as e:
-        print(f"!!! An error occurred during the network request: {e}")
-        exit(1) # Exit with an error code
+except requests.exceptions.RequestException as e:
+    print(f"\n!!! FETCH FAILED: {e}")
 
-# Reconstruct the final GeoJSON object with all features
-final_geojson = {
-    "type": "FeatureCollection",
-    "crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:EPSG::4326" } },
-    "features": all_features
-}
-
-with open("biodiversity_richness.geojson", "w") as f:
-    json.dump(final_geojson, f)
-
-print(f"Successfully fetched a total of {len(all_features)} biodiversity features and saved to biodiversity_richness.geojson")
+print("\n--- Test Complete ---")
