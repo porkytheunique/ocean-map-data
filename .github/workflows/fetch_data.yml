@@ -1,48 +1,44 @@
 # Name of the automated workflow
 name: Fetch Ocean Data
 
-# Controls when the action runs
 on:
   workflow_dispatch:
   schedule:
     - cron: '0 5 * * *'
 
-# Defines the jobs that will run
 jobs:
-  # First job: Fetch data from Global Fishing Watch (Working)
-  fetch-gfw-data:
-    runs-on: ubuntu-latest
-    steps:
-      # ... (This job is working perfectly, no changes needed here) ...
-      - name: Check out repo
-        uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
-      - name: Install dependencies
-        run: pip install requests
-      - name: Create GFW Python script
-        run: |
-          cat > gfw_script.py <<EOF
-          # ... (The full, working GFW Python script goes here) ...
-          EOF
-      - name: Run GFW script
-        env:
-          GFW_API_KEY: ${{ secrets.GFW_API_KEY }}
-        run: python gfw_script.py
-      - name: Commit and push if it changed
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: "Automated update of GFW fishing events"
-          file_pattern: "fishing_events.geojson"
+  # First job: Fetch data from Global Fishing Watch (DISABLED FOR DEBUGGING)
+  # fetch-gfw-data:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Check out repo
+  #       uses: actions/checkout@v4
+  #     - name: Set up Python
+  #       uses: actions/setup-python@v5
+  #       with:
+  #         python-version: '3.10'
+  #     - name: Install dependencies
+  #       run: pip install requests
+  #     - name: Create GFW Python script
+  #       run: |
+  #         cat > gfw_script.py <<EOF
+  #         # ... (The full, working GFW Python script goes here) ...
+  #         EOF
+  #     - name: Run GFW script
+  #       env:
+  #         GFW_API_KEY: ${{ secrets.GFW_API_KEY }}
+  #       run: python gfw_script.py
+  #     - name: Commit and push if it changed
+  #       uses: stefanzweifel/git-auto-commit-action@v5
+  #       with:
+  #         commit_message: "Automated update of GFW fishing events"
+  #         file_pattern: "fishing_events.geojson"
 
   # Second job: Fetch data from the ArcGIS Marine Species layer
   fetch-biodiversity-data:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repo
-        # This step is crucial, it downloads your repository's files, including the new script
         uses: actions/checkout@v4
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -50,7 +46,6 @@ jobs:
           python-version: '3.10'
       - name: Install dependencies
         run: pip install requests
-      # THIS IS THE NEW, SIMPLER STEP
       - name: Run Biodiversity script from file
         run: python biodiversity_script.py
       - name: Commit and push if it changed
