@@ -13,7 +13,6 @@ jobs:
   fetch-gfw-data:
     runs-on: ubuntu-latest
     steps:
-      # ... (GFW steps remain the same, no changes needed here) ...
       - name: Check out repo
         uses: actions/checkout@v4
       - name: Set up Python
@@ -28,31 +27,50 @@ jobs:
           import requests
           import os
           import json
-          from datetime import datetime, date, timedelta
-          print("--- Starting GFW Data Fetch using Events API v3 ---")
+          import csv
+          from io import StringIO
+          from datetime import datetime, timedelta
+
+          print("--- Starting GFW Data Fetch using V3 4Wings Report API ---")
           api_key = os.getenv('GFW_API_KEY')
+          
           end_date = datetime.utcnow().date() - timedelta(days=3)
           start_date = end_date - timedelta(days=3)
-          start_date_str = start_date.strftime('%Y-%m-%d')
-          end_date_str = end_date.strftime('%Y-%m-%d')
-          url = "https://gateway.api.globalfishingwatch.org/v3/events"
+          date_range = f"{start_date.strftime('%Y-%m-%d')},{end_date.strftime('%Y-%m-%d')}"
+          
+          url = "https://gateway.api.globalfishingwatch.org/v3/4wings/report"
           headers = { 'Authorization': f"Bearer {api_key}" }
           params = {
-              'datasets[0]': 'public-global-fishing-events:latest',
-              'types[0]': 'FISHING',
-              'start-date': start_date_str,
-              'end-date': end_date_str,
-              'limit': 10000,
-              'offset': 0
+              'datasets[0]': 'public-global-fishing-effort:latest',
+              'spatial-resolution': 'LOW',
+              'temporal-resolution': 'daily',
+              'date-range': date_range,
+              'format': 'CSV'
           }
+          
           try:
               response = requests.get(url, headers=headers, params=params)
-              response.raise_for_status()
-              with open("fishing_events.geojson", "w") as f:
-                  f.write(response.text)
-              data = response.json()
-              event_count = data.get('total', 0)
-              print(f"Successfully saved {event_count} events to fishing_events.geojson")
+              response.raise_for_status() 
+              print("Request successful. Converting CSV to GeoJSON...")
+              features = []
+              csv_file = StringIO(response.text)
+              reader = csv.DictReader(csv_file)
+              for row in reader:
+                  try:
+                      lat = float(row['cell_ll_lat'])
+                      lon = float(row['cell_ll_lon'])
+                      hours = float(row['fishing_hours'])
+                      features.append({
+                          "type": "Feature",
+                          "geometry": { "type": "Point", "coordinates": [lon, lat] },
+                          "properties": { "fishing_hours": hours }
+                      })
+                  except (ValueError, KeyError):
+                      continue
+              geojson_output = { "type": "FeatureCollection", "features": features }
+              with open("fishing_effort.geojson", "w") as f:
+                  json.dump(geojson_output, f)
+              print(f"Successfully saved {len(features)} data points to fishing_effort.geojson")
           except requests.exceptions.HTTPError as e:
               print(f"!!! ERROR: Request Failed. Status Code: {e.response.status_code}")
               print(f"--- Server Response Body ---\n{e.response.text}\n--------------------------")
@@ -66,10 +84,10 @@ jobs:
       - name: Commit and push if it changed
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "Automated update of GFW fishing events"
-          file_pattern: "fishing_events.geojson"
+          commit_message: "Automated update of GFW fishing effort"
+          file_pattern: "fishing_effort.geojson"
 
-  # Second job: Fetch data from the ArcGIS Marine Species layer (with Pagination)
+  # Second job: Fetch data from the ArcGIS Marine Species layer (with Pagination restored)
   fetch-biodiversity-data:
     runs-on: ubuntu-latest
     steps:
