@@ -5,7 +5,7 @@ name: Fetch Ocean Data
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 5 * * *'
+    - cron: '0 5 * * *' # Runs at 5 AM UTC daily
 
 # Defines the jobs that will run
 jobs:
@@ -33,36 +33,25 @@ jobs:
           print("--- Starting GFW Data Fetch using Events API v3 ---")
           api_key = os.getenv('GFW_API_KEY')
           
-          # THIS IS THE NEW DATE LOGIC TO TEST THE API
-          # We will query for the first 7 days of the previous month to ensure data is available.
-          today = date.today()
-          first_day_of_current_month = today.replace(day=1)
-          last_day_of_previous_month = first_day_of_current_month - timedelta(days=1)
-          first_day_of_previous_month = last_day_of_previous_month.replace(day=1)
-          
-          start_date = first_day_of_previous_month
-          end_date = start_date + timedelta(days=7)
-
+          # FINAL DATE LOGIC: Fetch a 3-day window ending 3 days ago for fresh, reliable data.
+          end_date = datetime.utcnow().date() - timedelta(days=3)
+          start_date = end_date - timedelta(days=3)
           start_date_str = start_date.strftime('%Y-%m-%d')
           end_date_str = end_date.strftime('%Y-%m-%d')
-          # --- END OF NEW DATE LOGIC ---
           
           print(f"Fetching data from {start_date_str} to {end_date_str}")
           
           url = "https://gateway.api.globalfishingwatch.org/v3/events"
-          
           headers = { 'Authorization': f"Bearer {api_key}" }
           params = {
               'datasets[0]': 'public-global-fishing-events:latest',
               'types[0]': 'FISHING',
               'start-date': start_date_str,
               'end-date': end_date_str,
-              'limit': 10000,
+              'limit': 10000, # Maximize events per request
               'offset': 0
           }
           
-          print(f"Requesting URL: {url} with params {params}")
-
           try:
               response = requests.get(url, headers=headers, params=params)
               response.raise_for_status() 
@@ -71,18 +60,13 @@ jobs:
               with open("fishing_events.geojson", "w") as f:
                   f.write(response.text)
 
-              # Check if any events were returned
               data = response.json()
               event_count = data.get('total', 0)
               print(f"Successfully saved {event_count} events to fishing_events.geojson")
-              if event_count == 0:
-                  print("WARNING: The API returned 0 events for the requested period.")
-
           except requests.exceptions.HTTPError as e:
               print(f"!!! ERROR: Request Failed. Status Code: {e.response.status_code}")
               print(f"--- Server Response Body ---\n{e.response.text}\n--------------------------")
               raise e
-
           print("--- GFW Data Fetch Complete ---")
           EOF
 
