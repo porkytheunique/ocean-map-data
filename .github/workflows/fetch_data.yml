@@ -35,26 +35,25 @@ jobs:
           print("--- Starting GFW Data Fetch using Report API v2 ---")
           api_key = os.getenv('GFW_API_KEY')
           
-          # Set a 3-day window ending 3 days ago to ensure data is processed
           end_date = datetime.utcnow().date() - timedelta(days=3)
           start_date = end_date - timedelta(days=3)
           date_range = f"{start_date.strftime('%Y-%m-%d')},{end_date.strftime('%Y-%m-%d')}"
           
           print(f"Fetching data for date range: {date_range}")
           
-          # This is the stable endpoint for gridded report data
           url = "https://gateway.api.globalfishingwatch.org/v2/report"
           
           headers = { 'Authorization': f"Bearer {api_key}" }
           params = {
-              'datasets[0]': 'public-global-fishing-effort:latest',
+              # CORRECTED LINE: Using the v2 dataset to match the v2 endpoint
+              'datasets[0]': 'public-global-fishing-effort:v2',
               'spatial-resolution': '1degree',
               'temporal-resolution': 'daily',
               'date-range': date_range,
               'format': 'csv'
           }
           
-          print(f"Requesting URL: {url}")
+          print(f"Requesting URL: {url} with dataset public-global-fishing-effort:v2")
 
           try:
               response = requests.get(url, headers=headers, params=params)
@@ -62,7 +61,6 @@ jobs:
               
               print("Request successful. Converting CSV to GeoJSON...")
               
-              # Convert the CSV response to a GeoJSON FeatureCollection
               features = []
               csv_file = StringIO(response.text)
               reader = csv.DictReader(csv_file)
@@ -83,7 +81,7 @@ jobs:
                           }
                       })
                   except (ValueError, KeyError):
-                      continue # Skip rows with invalid data
+                      continue
 
               geojson_output = {
                   "type": "FeatureCollection",
@@ -120,8 +118,9 @@ jobs:
     steps:
       - name: Check out repo
         uses: actions/checkout@v4
+      # CORRECTED LINE: Using the official actions/setup-python tool
       - name: Set up Python
-        uses: actions-lab/setup-python@v1
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
       - name: Install dependencies
