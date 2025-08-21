@@ -32,7 +32,7 @@ jobs:
           from io import StringIO
           from datetime import datetime, timedelta
 
-          print("--- Starting GFW Data Fetch using Report API v2 ---")
+          print("--- Starting GFW Data Fetch using V3 4Wings Report API ---")
           api_key = os.getenv('GFW_API_KEY')
           
           end_date = datetime.utcnow().date() - timedelta(days=3)
@@ -41,19 +41,20 @@ jobs:
           
           print(f"Fetching data for date range: {date_range}")
           
-          url = "https://gateway.api.globalfishingwatch.org/v2/report"
+          # THIS IS THE CORRECT ENDPOINT BASED ON YOUR DOCUMENTATION RESEARCH
+          url = "https://gateway.api.globalfishingwatch.org/v3/4wings/report"
           
           headers = { 'Authorization': f"Bearer {api_key}" }
           params = {
-              # CORRECTED LINE: Using the v2 dataset to match the v2 endpoint
-              'datasets[0]': 'public-global-fishing-effort:v2',
+              # THIS IS THE CORRECT DATASET ID FOR THIS ENDPOINT
+              'datasets[0]': 'public-global-fishing-effort:latest',
               'spatial-resolution': '1degree',
               'temporal-resolution': 'daily',
               'date-range': date_range,
               'format': 'csv'
           }
           
-          print(f"Requesting URL: {url} with dataset public-global-fishing-effort:v2")
+          print(f"Requesting URL: {url}")
 
           try:
               response = requests.get(url, headers=headers, params=params)
@@ -66,27 +67,21 @@ jobs:
               reader = csv.DictReader(csv_file)
               for row in reader:
                   try:
-                      lat = float(row['lat_bin']) / 100
-                      lon = float(row['lon_bin']) / 100
+                      # The column names from the report endpoint are different
+                      lat = float(row['cell_ll_lat'])
+                      lon = float(row['cell_ll_lon'])
                       hours = float(row['fishing_hours'])
                       
                       features.append({
                           "type": "Feature",
-                          "geometry": {
-                              "type": "Point",
-                              "coordinates": [lon, lat]
-                          },
-                          "properties": {
-                              "fishing_hours": hours
-                          }
+                          "geometry": { "type": "Point", "coordinates": [lon, lat] },
+                          "properties": { "fishing_hours": hours }
                       })
-                  except (ValueError, KeyError):
+                  except (ValueError, KeyError) as e:
+                      print(f"Skipping row with error: {row} - {e}")
                       continue
 
-              geojson_output = {
-                  "type": "FeatureCollection",
-                  "features": features
-              }
+              geojson_output = { "type": "FeatureCollection", "features": features }
 
               with open("fishing_effort.geojson", "w") as f:
                   json.dump(geojson_output, f)
@@ -118,7 +113,6 @@ jobs:
     steps:
       - name: Check out repo
         uses: actions/checkout@v4
-      # CORRECTED LINE: Using the official actions/setup-python tool
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
