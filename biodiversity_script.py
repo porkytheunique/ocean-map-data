@@ -5,7 +5,7 @@ import os
 # This tells Python to print messages to the log immediately.
 os.environ['PYTHONUNBUFFERED'] = "1"
 
-print("--- Starting Final Paginated Biodiversity Data Fetch ---")
+print("--- Starting Paginated & Processed Biodiversity Data Fetch ---")
 
 base_url = "https://services9.arcgis.com/IkktFdUAcY3WrH25/arcgis/rest/services/Global_Marine_Species_Patterns_(55km)/FeatureServer/0/query"
 params = {
@@ -22,14 +22,11 @@ all_features = []
 while True:
     print(f"Fetching features starting at offset {params['resultOffset']}...")
     try:
-        # We will use a long timeout to allow the server time to process
         response = requests.get(base_url, params=params, timeout=300) # 5 minute timeout
         response.raise_for_status()
         data = response.json()
         
         features = data.get('features', [])
-        
-        # THIS IS THE CORRECT LOGIC: Stop when the server returns no more features.
         if not features:
             print("No more features returned, fetch complete.")
             break
@@ -37,21 +34,40 @@ while True:
         all_features.extend(features)
         print(f"Fetched {len(features)} features. Total so far: {len(all_features)}")
         
-        # Update the offset for the next page
+        if not data.get('properties', {}).get('exceededTransferLimit', False):
+            print("Transfer limit not exceeded, fetch complete.")
+            break
+        
         params['resultOffset'] += len(features)
 
     except requests.exceptions.RequestException as e:
-        print(f"!!! An error occurred during the network request: {e}")
-        exit(1) # Exit with an error code
+        print(f"An error occurred during the network request: {e}")
+        exit(1)
 
-# Reconstruct the final GeoJSON object with all features
-final_geojson = {
-    "type": "FeatureCollection",
-    "crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:EPSG::4326" } },
-    "features": all_features
-}
+print(f"\nSuccessfully fetched {len(all_features)} total features. Now processing...")
 
-with open("biodiversity_richness.geojson", "w") as f:
-    json.dump(final_geojson, f)
+# Process the features into a simple [lat, lon, intensity] format
+heatmap_data = []
+for feature in all_features:
+    if feature.get('geometry') and feature['geometry'].get('coordinates'):
+        # Find the center of the polygon by averaging its corner points
+        coords = feature['geometry']['coordinates'][0]
+        lon_sum = 0
+        lat_sum = 0
+        point_count = len(coords)
+        
+        for point in coords:
+            lon_sum += point[0]
+            lat_sum += point[1]
+        
+        center_lon = lon_sum / point_count
+        center_lat = lat_sum / point_count
+        richness = feature['properties']['Rich_all']
+        
+        heatmap_data.append([center_lat, center_lon, richness])
 
-print(f"\nSuccessfully fetched a total of {len(all_features)} biodiversity features and saved to biodiversity_richness.geojson")
+# Save the much smaller, processed data file
+with open("biodiversity_heatmap_data.json", "w") as f:
+    json.dump(heatmap_data, f)
+
+print(f"Successfully processed and saved {len(heatmap_data)} data points to biodiversity_heatmap_data.json")
