@@ -1,7 +1,11 @@
 import requests
 import json
+import os
 
-print("--- Starting Paginated Biodiversity Data Fetch ---")
+# This tells Python to print messages to the log immediately.
+os.environ['PYTHONUNBUFFERED'] = "1"
+
+print("--- Starting Paginated Biodiversity Data Fetch (with timeouts) ---")
 
 base_url = "https://services9.arcgis.com/IkktFdUAcY3WrH25/arcgis/rest/services/Global_Marine_Species_Patterns_(55km)/FeatureServer/0/query"
 params = {
@@ -18,7 +22,8 @@ all_features = []
 while True:
     print(f"Fetching features starting at offset {params['resultOffset']}...")
     try:
-        response = requests.get(base_url, params=params, timeout=300) # 5 minute timeout
+        # We've added a 120-second (2 minute) timeout to the request.
+        response = requests.get(base_url, params=params, timeout=120)
         response.raise_for_status()
         data = response.json()
         
@@ -37,8 +42,8 @@ while True:
         params['resultOffset'] += len(features)
 
     except requests.exceptions.RequestException as e:
-        print(f"An error occurred: {e}")
-        break
+        print(f"!!! An error occurred during the network request: {e}")
+        exit(1) # Exit with an error code
 
 # Reconstruct the final GeoJSON object with all features
 final_geojson = {
