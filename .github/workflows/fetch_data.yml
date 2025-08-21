@@ -21,46 +21,79 @@ jobs:
           python-version: '3.10'
       - name: Install dependencies
         run: pip install requests
+
       - name: Create GFW Python script
         run: |
           cat > gfw_script.py <<EOF
           import requests
           import os
+          import json
+          import csv
+          from io import StringIO
           from datetime import datetime, timedelta
 
-          print("--- Starting GFW Data Fetch using Events API v3 ---")
+          print("--- Starting GFW Data Fetch using Report API v2 ---")
           api_key = os.getenv('GFW_API_KEY')
           
-          # --- THIS IS THE CHANGED SECTION ---
-          # We now set our window to end 2 days ago to account for data processing delays.
-          end_date = datetime.utcnow().date() - timedelta(days=2)
+          # Set a 3-day window ending 3 days ago to ensure data is processed
+          end_date = datetime.utcnow().date() - timedelta(days=3)
           start_date = end_date - timedelta(days=3)
-          # ------------------------------------
-
-          start_date_str = start_date.strftime('%Y-%m-%d')
-          end_date_str = end_date.strftime('%Y-%m-%d')
+          date_range = f"{start_date.strftime('%Y-%m-%d')},{end_date.strftime('%Y-%m-%d')}"
           
-          print(f"Fetching data from {start_date_str} to {end_date_str}")
+          print(f"Fetching data for date range: {date_range}")
           
-          url = "https://gateway.api.globalfishingwatch.org/v3/events"
+          # This is the stable endpoint for gridded report data
+          url = "https://gateway.api.globalfishingwatch.org/v2/report"
+          
           headers = { 'Authorization': f"Bearer {api_key}" }
           params = {
-              'datasets[0]': 'public-global-fishing-events:latest',
-              'types[0]': 'FISHING',
-              'start-date': start_date_str,
-              'end-date': end_date_str,
-              'limit': 10000,
-              'offset': 0
+              'datasets[0]': 'public-global-fishing-effort:latest',
+              'spatial-resolution': '1degree',
+              'temporal-resolution': 'daily',
+              'date-range': date_range,
+              'format': 'csv'
           }
           
+          print(f"Requesting URL: {url}")
+
           try:
               response = requests.get(url, headers=headers, params=params)
               response.raise_for_status() 
               
-              print("Request successful. Writing to file...")
-              with open("fishing_events.geojson", "w") as f:
-                  f.write(response.text)
-              print("Successfully saved to fishing_events.geojson")
+              print("Request successful. Converting CSV to GeoJSON...")
+              
+              # Convert the CSV response to a GeoJSON FeatureCollection
+              features = []
+              csv_file = StringIO(response.text)
+              reader = csv.DictReader(csv_file)
+              for row in reader:
+                  try:
+                      lat = float(row['lat_bin']) / 100
+                      lon = float(row['lon_bin']) / 100
+                      hours = float(row['fishing_hours'])
+                      
+                      features.append({
+                          "type": "Feature",
+                          "geometry": {
+                              "type": "Point",
+                              "coordinates": [lon, lat]
+                          },
+                          "properties": {
+                              "fishing_hours": hours
+                          }
+                      })
+                  except (ValueError, KeyError):
+                      continue # Skip rows with invalid data
+
+              geojson_output = {
+                  "type": "FeatureCollection",
+                  "features": features
+              }
+
+              with open("fishing_effort.geojson", "w") as f:
+                  json.dump(geojson_output, f)
+
+              print(f"Successfully saved {len(features)} data points to fishing_effort.geojson")
 
           except requests.exceptions.HTTPError as e:
               print(f"!!! ERROR: Request Failed. Status Code: {e.response.status_code}")
@@ -69,6 +102,7 @@ jobs:
 
           print("--- GFW Data Fetch Complete ---")
           EOF
+
       - name: Run GFW script
         env:
           GFW_API_KEY: ${{ secrets.GFW_API_KEY }}
@@ -77,8 +111,8 @@ jobs:
       - name: Commit and push if it changed
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "Automated update of GFW fishing events"
-          file_pattern: "fishing_events.geojson"
+          commit_message: "Automated update of GFW fishing effort"
+          file_pattern: "fishing_effort.geojson"
 
   # Second job: Fetch data from the ArcGIS Marine Species layer
   fetch-biodiversity-data:
@@ -87,7 +121,7 @@ jobs:
       - name: Check out repo
         uses: actions/checkout@v4
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions-lab/setup-python@v1
         with:
           python-version: '3.10'
       - name: Install dependencies
@@ -97,7 +131,6 @@ jobs:
           cat > biodiversity_script.py <<EOF
           import requests
           url = "https://services9.arcgis.com/IkktFdUAcY3WrH25/arcgis/rest/services/Global_Marine_Species_Patterns_(55km)/FeatureServer/0/query?where=1%3D1&outFields=Rich_all&outSR=4326&f=geojson"
-          print(f"Requesting URL: {url}")
           response = requests.get(url)
           response.raise_for_status()
           with open("biodiversity_richness.geojson", "w") as f:
