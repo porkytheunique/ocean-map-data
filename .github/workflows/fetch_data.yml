@@ -7,7 +7,7 @@ on:
     - cron: '0 5 * * *'
 
 jobs:
-  # This workflow now ONLY fetches GFW data.
+  # First job: Fetch data from Global Fishing Watch
   fetch-gfw-data:
     runs-on: ubuntu-latest
     steps:
@@ -19,17 +19,85 @@ jobs:
           python-version: '3.10'
       - name: Install dependencies
         run: pip install requests
-      - name: Create GFW Python script
-        run: |
-          cat > gfw_script.py <<EOF
-          # ... (The full, working GFW Python script goes here) ...
-          EOF
-      - name: Run GFW script
+      # This step creates and runs the GFW script with detailed logging
+      - name: Fetch GFW Data
         env:
           GFW_API_KEY: ${{ secrets.GFW_API_KEY }}
-        run: python gfw_script.py
+        run: |
+          python - <<EOF
+          import requests
+          import os
+          import json
+          from datetime import datetime, date, timedelta
+
+          # This ensures print statements appear in the log immediately
+          os.environ['PYTHONUNBUFFERED'] = "1"
+
+          print("--- Starting GFW Data Fetch using Events API v3 ---")
+          api_key = os.getenv('GFW_API_KEY')
+          
+          # Using the proven date logic for the Events API
+          today = date.today()
+          first_day_of_current_month = today.replace(day=1)
+          last_day_of_previous_month = first_day_of_current_month - timedelta(days=1)
+          first_day_of_previous_month = last_day_of_previous_month.replace(day=1)
+          start_date = first_day_of_previous_month
+          end_date = start_date + timedelta(days=7)
+          start_date_str = start_date.strftime('%Y-%m-%d')
+          end_date_str = end_date.strftime('%Y-%m-%d')
+          
+          print(f"Fetching data from {start_date_str} to {end_date_str}")
+          
+          url = "https://gateway.api.globalfishingwatch.org/v3/events"
+          headers = { 'Authorization': f"Bearer {api_key}" }
+          params = {
+              'datasets[0]': 'public-global-fishing-events:latest',
+              'types[0]': 'FISHING',
+              'start-date': start_date_str,
+              'end-date': end_date_str,
+              'limit': 10000,
+              'offset': 0
+          }
+          
+          print(f"Requesting URL: {url}")
+          
+          try:
+              response = requests.get(url, headers=headers, params=params, timeout=300)
+              response.raise_for_status() 
+              
+              print("Request successful. Writing to file...")
+              with open("fishing_events.geojson", "w") as f:
+                  f.write(response.text)
+              data = response.json()
+              event_count = data.get('total', 0)
+              print(f"Successfully saved {event_count} events to fishing_events.geojson")
+          except requests.exceptions.RequestException as e:
+              print(f"!!! ERROR: Request Failed: {e}")
+              exit(1)
+          print("--- GFW Data Fetch Complete ---")
+          EOF
       - name: Commit and push if it changed
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "Automated update of GFW fishing events"
           file_pattern: "fishing_events.geojson"
+
+  # Second job: Fetch data from the ArcGIS Marine Species layer
+  fetch-biodiversity-data:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Install dependencies
+        run: pip install requests
+      - name: Run Biodiversity script from file
+        run: python biodiversity_script.py
+      - name: Commit and push if it changed
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "Automated update of marine biodiversity data"
+          file_pattern: "biodiversity_heatmap_data.json"
